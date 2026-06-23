@@ -23,7 +23,12 @@ A professional, lightweight, and automation-focused desktop application designed
    cd office-media-scheduler
    ```
 2. Place your custom application icon named `icon_logo.ico` in the root directory.
-3. Run the application:
+3. Install tools untuk compile
+   ```bash
+   pip install pyinstaller
+4. Run the application:
    ```bash
    python scheduler_app.py
-   ``
+## Jalankan perintah build dengan icon kustom Anda
+   ```bash
+   pyinstaller --clean --noconsole --onefile --icon=icon_logo.ico scheduler_app.py
