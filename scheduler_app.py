@@ -194,9 +194,36 @@ class AdvancedOfficeScheduler:
         entry_frame.pack(fill="x", padx=10, pady=5)
 
         tk.Label(entry_frame, text="Jam (HH:MM):").pack(side="left", padx=3)
-        self.ent_sched_time = tk.Entry(entry_frame, width=6, font=("Arial", 11))
+        
+        # --- Validasi Input Otomatis, just angka & formatted---
+        def validate_time_input(P):
+            if P == "": 
+                return True
+            if len(P) > 5: 
+                return False
+            for i, char in enumerate(P):
+                if i == 2:
+                    if char != ":": return False # Karakter ke-3 WAJIB titik dua
+                else:
+                    if not char.isdigit(): return False # Karakter lainnya WAJIB angka
+            return True
+
+        vcmd = (self.root.register(validate_time_input), '%P')
+        
+        # Buat Entry dengan validasi ketat
+        self.ent_sched_time = tk.Entry(entry_frame, width=7, font=("Arial", 11), validate="key", validatecommand=vcmd)
         self.ent_sched_time.insert(0, "08:00")
         self.ent_sched_time.pack(side="left", padx=3)
+
+        # Fitur auto-insert titik dua ketika user mengetik angka ke-2
+        def auto_insert_colon(event):
+            if event.keysym == "Backspace": 
+                return
+            current_text = self.ent_sched_time.get()
+            if len(current_text) == 2:
+                self.ent_sched_time.insert(2, ":")
+
+        self.ent_sched_time.bind("<KeyRelease>", auto_insert_colon)
 
         tk.Label(entry_frame, text="Pilih Sound:").pack(side="left", padx=3)
         self.cb_sound_select = ttk.Combobox(entry_frame, values=[], state="readonly", width=18)
@@ -240,10 +267,24 @@ class AdvancedOfficeScheduler:
         if not sound:
             messagebox.showwarning("Peringatan", "Library sound kosong! Isi menu 1 dahulu.")
             return
+
+        # --- validasi Jam ---
+        # Cek apakah input kosong atau belum lengkap ditulis (misal baru ngetik "12:")
+        if len(t_str) != 5:
+            messagebox.showerror("Error", "Format waktu belum lengkap! Isi dengan format HH:MM (Contoh: 08:00)")
+            return
+
         try:
+            hours, minutes = t_str.split(":")
+            # Karena input sudah pasti angka (validasi dari fungsi validate_time_input diatas), 
+            # kita tinggal cek batasan nilai jam dan menitnya saja.
+            if int(hours) > 23 or int(minutes) > 59:
+                messagebox.showerror("Error", "Waktu tidak valid! Jam maksimal 23 dan Menit maksimal 59 (Contoh: 23:59)")
+                return
+                
             time.strptime(t_str, "%H:%M")
         except ValueError:
-            messagebox.showerror("Error", "Format waktu salah! Gunakan HH:MM (Contoh 07:15 atau 13:00)")
+            messagebox.showerror("Error", "Waktu yang dimasukkan salah!")
             return
 
         self.schedules[day].append({"time": t_str, "sound": sound, "loop": loop_int})
