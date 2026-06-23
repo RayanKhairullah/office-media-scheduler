@@ -14,6 +14,7 @@ import os
 import json
 import tempfile
 import sys
+import subprocess
 
 class AdvancedOfficeScheduler:
     def __init__(self, root):
@@ -378,7 +379,20 @@ class AdvancedOfficeScheduler:
                     f.write(vbs_content)
                     vbs_file_path = f.name
                 
-                os.system(f'cscript //nologo "{vbs_file_path}"')
+                # Konfigurasi untuk menyembunyikan jendela CMD
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                
+                # Menggunakan subprocess.run (SINKRONUS) agar menunggu lagu selesai baru lanjut
+                subprocess.run(
+                    f'wscript.exe "{vbs_file_path}"',
+                    startupinfo=startupinfo,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    shell=False
+                )
+                
                 os.unlink(vbs_file_path)
             except Exception:
                 pass
