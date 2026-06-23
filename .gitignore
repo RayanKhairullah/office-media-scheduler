@@ -1,0 +1,21 @@
+# Virtual Environment Python
+.venv/
+venv/
+ENV/
+
+# PyInstaller / Hasil Kompilasi EXE
+build/
+dist/
+*.spec
+
+# File Konfigurasi Data Lokal
+scheduler_config.json
+
+# Cache Python
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Log Error lokal
+*.log
