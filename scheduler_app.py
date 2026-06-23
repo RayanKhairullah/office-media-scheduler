@@ -70,7 +70,7 @@ class AdvancedOfficeScheduler:
         self.tab3 = ttk.Frame(self.notebook)
 
         self.notebook.add(self.tab1, text=" Menu 1: Manajemen Sound ")
-        self.notebook.add(self.tab2, text=" Menu 2: Penjadwalan (Schedule) ")
+        self.notebook.add(self.tab2, text=" Menu 2: Penjadwalan ")
         self.notebook.add(self.tab3, text=" Menu 3: Monitor ")
 
         self.build_tab1_management()
