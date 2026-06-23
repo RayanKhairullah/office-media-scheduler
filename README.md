@@ -31,4 +31,4 @@ A professional, lightweight, and automation-focused desktop application designed
    python scheduler_app.py
 ## Jalankan perintah build dengan icon kustom Anda
    ```bash
-   pyinstaller --clean --noconsole --onefile --icon=icon_logo.ico scheduler_app.py
+   pyinstaller --clean --noconsole --onefile --icon=icon_logo.ico --add-data "icon_logo.ico;." scheduler_app.py

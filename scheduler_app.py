@@ -13,6 +13,7 @@ from datetime import datetime
 import os
 import json
 import tempfile
+import sys
 
 class AdvancedOfficeScheduler:
     def __init__(self, root):
@@ -21,7 +22,15 @@ class AdvancedOfficeScheduler:
         self.root.geometry("750x620")
         
         # --- KUSTOMISASI IKON WINDOWS & TASKBAR ---
-        self.icon_name = "icon_logo.ico"
+        # Handle path icon untuk Python script maupun PyInstaller .exe
+        if getattr(sys, 'frozen', False):
+            # Jika dikompilasi dengan PyInstaller
+            base_path = sys._MEIPASS
+        else:
+            # Jika dijalankan sebagai script Python
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        
+        self.icon_name = os.path.join(base_path, "icon_logo.ico")
         try:
             if os.path.exists(self.icon_name):
                 self.root.iconbitmap(self.icon_name)
