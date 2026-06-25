@@ -44,8 +44,11 @@ class AdvancedOfficeScheduler:
         
         self.load_data()
         self.is_running = False
+        self.audio_processes = []
+        self.process_lock = threading.Lock()
         
         self.setup_ui()
+        self.root.bind("<Escape>", lambda e: self.emergency_stop())
         self.start_global_clock()
 
     def load_data(self):
@@ -392,6 +395,17 @@ class AdvancedOfficeScheduler:
             self.scheduler_thread = threading.Thread(target=self.core_scheduler_engine, daemon=True)
             self.scheduler_thread.start()
         else:
+            self.emergency_stop()
+
+    def emergency_stop(self):
+        with self.process_lock:
+            for proc in self.audio_processes[:]:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+            self.audio_processes.clear()
+        if self.is_running:
             self.is_running = False
             self.btn_engine.config(text="MULAI ENGINE OTOMATISASI (AKTIFKAN)", bg="#4CAF50")
             self.refresh_monitor_view()
@@ -420,19 +434,26 @@ class AdvancedOfficeScheduler:
                     f.write(vbs_content)
                     vbs_file_path = f.name
                 
-                # Konfigurasi untuk menyembunyikan jendela CMD
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 startupinfo.wShowWindow = subprocess.SW_HIDE
                 
-                # Menggunakan subprocess.run (SINKRONUS) agar menunggu lagu selesai baru lanjut
-                subprocess.run(
-                    f'wscript.exe "{vbs_file_path}"',
+                proc = subprocess.Popen(
+                    ['wscript.exe', vbs_file_path],
                     startupinfo=startupinfo,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     shell=False
                 )
+                
+                with self.process_lock:
+                    self.audio_processes.append(proc)
+                
+                proc.wait()
+                
+                with self.process_lock:
+                    if proc in self.audio_processes:
+                        self.audio_processes.remove(proc)
                 
                 os.unlink(vbs_file_path)
             except Exception:
