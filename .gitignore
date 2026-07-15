@@ -19,3 +19,12 @@ scheduler_config.json
 
 # Log Error lokal
 *.log
+
+AUTO_START_GUIDE.txt
+AUTO_START_MENU.bat
+BUILD_EXE.bat
+install_autostart_taskscheduler.bat
+QUICK_START_GUIDE.txt
+install_autostart_startup.bat
+uninstall_autostart_taskscheduler.bat
+uninstall_autostart_startup.bat

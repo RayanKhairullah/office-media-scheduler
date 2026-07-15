@@ -15,6 +15,8 @@ import json
 import tempfile
 import sys
 import subprocess
+import socket
+import struct
 
 class AdvancedOfficeScheduler:
     def __init__(self, root):
@@ -42,14 +44,103 @@ class AdvancedOfficeScheduler:
         self.media_library = {}
         self.schedules = {day: [] for day in ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]}
         
+        # NTP Time Sync Variables
+        self.time_offset = 0  # Selisih antara waktu NTP dan sistem lokal
+        self.last_ntp_sync = None
+        self.use_ntp_time = True  # Flag untuk menggunakan waktu NTP
+        
         self.load_data()
         self.is_running = False
+        self.pin = "3344"
         self.audio_processes = []
         self.process_lock = threading.Lock()
         
         self.setup_ui()
         self.root.bind("<Escape>", lambda e: self.emergency_stop())
+        
+        # Sinkronisasi waktu NTP di background
+        self.start_ntp_sync()
+        
         self.start_global_clock()
+        
+        # Auto-start engine saat program dibuka
+        self.auto_start_engine()
+    
+    def get_ntp_time(self, ntp_host="pool.ntp.org", timeout=3):
+        """Mendapatkan waktu dari NTP server"""
+        try:
+            NTP_PACKET_FORMAT = "!12I"
+            NTP_DELTA = 2208988800  # 1970-01-01 00:00:00
+            NTP_QUERY = b'\x1b' + 47 * b'\0'
+            
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.settimeout(timeout)
+                s.sendto(NTP_QUERY, (ntp_host, 123))
+                msg, address = s.recvfrom(1024)
+            
+            unpacked = struct.unpack(NTP_PACKET_FORMAT, msg[0:struct.calcsize(NTP_PACKET_FORMAT)])
+            ntp_time = unpacked[10] + float(unpacked[11]) / 2**32 - NTP_DELTA
+            
+            return datetime.fromtimestamp(ntp_time)
+        except Exception:
+            return None
+    
+    def sync_time_from_ntp(self):
+        """Sinkronisasi waktu dengan NTP server (mencoba beberapa server)"""
+        ntp_servers = [
+            "id.pool.ntp.org",      # Indonesia NTP Pool
+            "0.id.pool.ntp.org",
+            "1.id.pool.ntp.org", 
+            "time.google.com",      # Google NTP
+            "time.windows.com",     # Microsoft NTP
+            "pool.ntp.org"          # Global NTP Pool
+        ]
+        
+        for server in ntp_servers:
+            ntp_time = self.get_ntp_time(server)
+            if ntp_time:
+                local_time = datetime.now()
+                # Hitung selisih waktu dalam detik
+                self.time_offset = (ntp_time - local_time).total_seconds()
+                self.last_ntp_sync = ntp_time
+                self.use_ntp_time = True
+                print(f"✓ NTP Sync berhasil dari {server}")
+                print(f"  Waktu NTP: {ntp_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                print(f"  Waktu Lokal: {local_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                print(f"  Selisih: {self.time_offset:.2f} detik")
+                return True
+        
+        # Jika semua server gagal
+        print("✗ Gagal sinkronisasi dengan semua NTP server. Menggunakan waktu sistem lokal.")
+        self.use_ntp_time = False
+        return False
+    
+    def get_current_time(self):
+        """Mendapatkan waktu saat ini (NTP-corrected atau lokal)"""
+        if self.use_ntp_time and self.last_ntp_sync:
+            # Gunakan waktu sistem + offset NTP
+            return datetime.now().timestamp() + self.time_offset
+        else:
+            # Fallback ke waktu sistem lokal
+            return datetime.now().timestamp()
+    
+    def get_current_datetime(self):
+        """Mendapatkan objek datetime saat ini (NTP-corrected atau lokal)"""
+        return datetime.fromtimestamp(self.get_current_time())
+    
+    def start_ntp_sync(self):
+        """Memulai thread untuk sinkronisasi NTP periodik"""
+        def ntp_sync_loop():
+            # Sinkronisasi pertama kali
+            self.sync_time_from_ntp()
+            
+            # Re-sinkronisasi setiap 1 jam
+            while True:
+                time.sleep(3600)  # 1 jam
+                self.sync_time_from_ntp()
+        
+        sync_thread = threading.Thread(target=ntp_sync_loop, daemon=True)
+        sync_thread.start()
 
     def load_data(self):
         if os.path.exists(self.config_file):
@@ -158,8 +249,47 @@ class AdvancedOfficeScheduler:
         self.ent_sound_name.insert(0, name)
         self.lbl_file_path.config(text=self.media_library[name], fg="black")
 
+    def verify_pin(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Verifikasi PIN")
+        dialog.geometry("300x150")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        result = [False]
+
+        tk.Label(dialog, text="Masukkan PIN untuk melanjutkan:", font=("Arial", 10)).pack(pady=10)
+        entry_pin = tk.Entry(dialog, show="*", width=20, font=("Arial", 12))
+        entry_pin.pack(pady=5)
+        entry_pin.focus_set()
+
+        def confirm():
+            if entry_pin.get() == self.pin:
+                result[0] = True
+                dialog.destroy()
+            else:
+                messagebox.showerror("Error", "PIN salah!", parent=dialog)
+                entry_pin.delete(0, tk.END)
+                entry_pin.focus_set()
+
+        def cancel():
+            dialog.destroy()
+
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        tk.Button(btn_frame, text="Konfirmasi", bg="#4CAF50", fg="white", command=confirm).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Batal", bg="#F44336", fg="white", command=cancel).pack(side="left", padx=5)
+
+        dialog.bind("<Return>", lambda e: confirm())
+        dialog.bind("<Escape>", lambda e: cancel())
+
+        self.root.wait_window(dialog)
+        return result[0]
+
     def delete_from_library(self):
         if not self.lib_listbox.curselection(): return
+        if not self.verify_pin(): return
         index = self.lib_listbox.curselection()[0]
         name = self.lib_listbox.get(index).split("  ->  ")[0]
         if messagebox.askyesno("Konfirmasi", f"Hapus '{name}' dari library?"):
@@ -261,6 +391,7 @@ class AdvancedOfficeScheduler:
         if self.media_library: self.cb_sound_select.set(sorted(list(self.media_library.keys()))[0])
 
     def add_time_schedule(self):
+        if not self.verify_pin(): return
         day = self.cb_day_select.get()
         t_str = self.ent_sched_time.get().strip()
         sound = self.cb_sound_select.get()
@@ -306,6 +437,7 @@ class AdvancedOfficeScheduler:
 
     def delete_time_schedule(self):
         if not self.sched_listbox.curselection(): return
+        if not self.verify_pin(): return
         idx = self.sched_listbox.curselection()[0]
         day = self.cb_day_select.get()
         del self.schedules[day][idx]
@@ -349,11 +481,15 @@ class AdvancedOfficeScheduler:
         def clock_loop():
             day_mapping_eng_indo = {"Monday":"Senin", "Tuesday":"Selasa", "Wednesday":"Rabu", "Thursday":"Kamis", "Friday":"Jumat", "Saturday":"Sabtu", "Sunday":"Minggu"}
             while True:
-                now = datetime.now()
+                # Gunakan waktu NTP-corrected
+                now = self.get_current_datetime()
                 time_str = now.strftime("%H:%M:%S")
                 eng_day = now.strftime("%A")
                 indo_day = day_mapping_eng_indo.get(eng_day, eng_day)
-                date_str = f"{indo_day}, {now.strftime('%d-%m-%Y')}"
+                
+                # Tambahkan indikator sumber waktu
+                time_source = " [NTP]" if self.use_ntp_time else " [Lokal]"
+                date_str = f"{indo_day}, {now.strftime('%d-%m-%Y')}{time_source}"
                 
                 try:
                     self.lbl_clock.config(text=time_str)
@@ -367,13 +503,18 @@ class AdvancedOfficeScheduler:
 
     def refresh_monitor_view(self):
         day_mapping_eng_indo = {"Monday":"Senin", "Tuesday":"Selasa", "Wednesday":"Rabu", "Thursday":"Kamis", "Friday":"Jumat", "Saturday":"Sabtu", "Sunday":"Minggu"}
-        current_day = day_mapping_eng_indo.get(datetime.now().strftime("%A"), "Senin")
+        # Gunakan waktu NTP-corrected
+        now = self.get_current_datetime()
+        current_day = day_mapping_eng_indo.get(now.strftime("%A"), "Senin")
 
         self.monitor_text.config(state="normal")
         self.monitor_text.delete("1.0", tk.END)
         
         status_engine = "AKTIF (Menunggu Waktu)\n" if self.is_running else "NONAKTIF (Jadwal tidak akan berputar)\n"
+        time_source = "NTP Internet" if self.use_ntp_time else "Waktu Sistem Lokal"
+        
         self.monitor_text.insert(tk.END, f"STATUS ENGINE: {status_engine}")
+        self.monitor_text.insert(tk.END, f"SUMBER WAKTU: {time_source}\n")
         self.monitor_text.insert(tk.END, f"Hari ini ({current_day}) terdapat {len(self.schedules[current_day])} jadwal:\n")
         self.monitor_text.insert(tk.END, "="*50 + "\n")
         
@@ -396,6 +537,15 @@ class AdvancedOfficeScheduler:
             self.scheduler_thread.start()
         else:
             self.emergency_stop()
+
+    def auto_start_engine(self):
+        """Fungsi untuk mengaktifkan engine otomatis saat program pertama kali dibuka"""
+        self.is_running = True
+        self.btn_engine.config(text="MATIKAN ENGINE OTOMATISASI", bg="#F44336")
+        self.refresh_monitor_view()
+        
+        self.scheduler_thread = threading.Thread(target=self.core_scheduler_engine, daemon=True)
+        self.scheduler_thread.start()
 
     def emergency_stop(self):
         with self.process_lock:
@@ -464,7 +614,8 @@ class AdvancedOfficeScheduler:
         last_played_trigger = ""
 
         while self.is_running:
-            now = datetime.now()
+            # Gunakan waktu NTP-corrected
+            now = self.get_current_datetime()
             current_day_indo = day_mapping_eng_indo.get(now.strftime("%A"), "Minggu")
             current_time_hm = now.strftime("%H:%M")
             trigger_key = f"{current_day_indo}-{current_time_hm}"
